@@ -1,0 +1,88 @@
+import tensorflow as tf
+from tensorflow.keras.applications import InceptionV3
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.layers import Dense, Flatten, Dropout
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adam
+import pathlib
+import cv2
+import numpy as np
+
+# Constants
+_LOCATION_DATA = "kaggle smile face dataset"
+_IMG_HEIGHT = 299
+_IMG_WIDTH = 299
+_BATCH_SIZE = 8
+_EPOCHS = 10
+
+# Load Dataset
+data_dir = pathlib.Path(_LOCATION_DATA)
+
+train_datagen = ImageDataGenerator(
+    rescale=1./255,
+    validation_split=0.2
+)
+
+train_generator = train_datagen.flow_from_directory(
+    data_dir,
+    target_size=(_IMG_HEIGHT, _IMG_WIDTH),
+    batch_size=_BATCH_SIZE,
+    class_mode='binary',
+    subset='training'
+)
+
+validation_generator = train_datagen.flow_from_directory(
+    data_dir,
+    target_size=(_IMG_HEIGHT, _IMG_WIDTH),
+    batch_size=_BATCH_SIZE,
+    class_mode='binary',
+    subset='validation'
+)
+
+# Load the InceptionV3 Model
+base_model = InceptionV3(
+    include_top=True,
+    weights="imagenet",
+    input_tensor=None,
+    input_shape=None,
+    pooling=None,
+    classes=1000,
+    classifier_activation="softmax",
+)
+
+# Add custom layers on top of InceptionV3
+x = base_model.output                                    # Output from the InceptionV3 model
+x = Flatten(name='flatten_custom')(x)                     # Fully Connected Layer (Flattening the output)
+x = Dense(512, activation='relu', name='dense_custom')(x) # Fully Connected Layer with ReLU activation
+x = Dropout(0.5, name='dropout_custom')(x)                # Dropout Layer (Regularization)
+x = Dense(1, activation='sigmoid', name='output_custom')(x) # Fully Connected Output Layer with Sigmoid activation
+
+# Create the model
+model = Model(inputs=base_model.input, outputs=x)
+
+# Compile the model with the corrected Adam optimizer
+adam_optimizer = Adam(
+    learning_rate=0.001,
+    beta_1=0.9,
+    beta_2=0.999,
+    epsilon=1e-07
+)
+
+model.compile(optimizer=adam_optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+# Summary of the model
+model.summary()
+
+# Train the model
+history = model.fit(
+    train_generator,
+    validation_data=validation_generator,
+    epochs=_EPOCHS
+)
+
+# Save the trained model
+model.save('inceptionv3_smile_detectionv1.h5')
+
+# Evaluate the model on validation data
+val_loss, val_acc = model.evaluate(validation_generator)
+print(f"Validation Accuracy: {val_acc*100:.2f}%")
